@@ -17,6 +17,12 @@ export class AuthController {
         return this.authService.signup(body);
     }
 
+    @Post('refresh')
+    async refresh(@Body() body: { refreshToken: string }) {
+        return this.authService.refreshToken(body.refreshToken);
+    }
+
+
     @UseGuards(AuthGuard)
     @Get('me')
     async me(@Request() request) {
@@ -26,7 +32,7 @@ export class AuthController {
 
     @UseGuards(AuthGuard)
     @Patch(':id')
-    async update(@Param('id', ParseIntPipe) id: number, @Body() data: updateUserDTO){
+    async update(@Param('id', ParseIntPipe) id: number, @Body() data: updateUserDTO) {
         return this.authService.update(id, data);
     }
 }
