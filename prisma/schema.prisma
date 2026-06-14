@@ -15,6 +15,12 @@ enum UserGroup {
     ADMIN
 }
 
+enum OccurrenceStatus {
+    IN_ANALYSIS
+    RESOLVED
+    REJECTED
+}
+
 model User {
     id        Int      @id @default(autoincrement())
     name      String
@@ -29,4 +35,66 @@ model User {
 	createdAt   DateTime  @default(now())
 	modifiedAt  DateTime  @updatedAt
 	deletedAt   DateTime?
+
+    occurrences Occurrence[]
+    supports    OccurrenceSupport[]
+    comments    OccurrenceComment[]
+}
+
+model Occurrence {
+    id          Int              @id @default(autoincrement())
+    title       String
+    description String?
+    category    String
+    status      OccurrenceStatus @default(IN_ANALYSIS)
+    anonymous   Boolean          @default(false)
+    latitude    Decimal?         @db.Decimal(10, 7)
+    longitude   Decimal?         @db.Decimal(10, 7)
+    address     String?
+    photos      String[]         @default([])
+
+    authorId Int
+    author   User @relation(fields: [authorId], references: [id])
+
+    supports OccurrenceSupport[]
+    comments OccurrenceComment[]
+
+    createdAt  DateTime  @default(now())
+    modifiedAt DateTime  @updatedAt
+    deletedAt  DateTime?
+
+    @@index([authorId])
+    @@index([category])
+    @@index([status])
+}
+
+model OccurrenceComment {
+    id           Int @id @default(autoincrement())
+    content      String
+    userId       Int
+    occurrenceId Int
+
+    user       User       @relation(fields: [userId], references: [id])
+    occurrence Occurrence @relation(fields: [occurrenceId], references: [id])
+
+    createdAt  DateTime  @default(now())
+    modifiedAt DateTime  @updatedAt
+    deletedAt  DateTime?
+
+    @@index([occurrenceId])
+    @@index([userId])
+}
+
+model OccurrenceSupport {
+    id           Int @id @default(autoincrement())
+    userId       Int
+    occurrenceId Int
+
+    user       User       @relation(fields: [userId], references: [id])
+    occurrence Occurrence @relation(fields: [occurrenceId], references: [id])
+
+    createdAt DateTime @default(now())
+
+    @@unique([userId, occurrenceId])
+    @@index([occurrenceId])
 }
