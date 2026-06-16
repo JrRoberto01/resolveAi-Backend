@@ -9,6 +9,7 @@ import {
     CreateOccurrenceCommentDTO,
     CreateOccurrenceDTO,
     ListOccurrenceDTO,
+    RankingOccurrenceDTO,
     UpdateOccurrenceCommentDTO,
     UpdateOccurrenceDTO,
 } from './occurrenceDTO';
@@ -92,6 +93,174 @@ export class OccurrencesService {
         return occurrences.map((occurrence) =>
             this.serializeOccurrence(occurrence, userId),
         );
+    }
+
+    async ranking(filters: RankingOccurrenceDTO) {
+        const days = filters.days ?? 7;
+        const rangeKm = filters.rangeKm ?? 25;
+        const latitude = filters.latitude;
+        const longitude = filters.longitude;
+        const periodStart = new Date();
+        periodStart.setDate(periodStart.getDate() - days);
+
+        const occurrences = await this.prismaService.occurrence.findMany({
+            where: {
+                deletedAt: null,
+                createdAt: {
+                    gte: periodStart,
+                },
+                latitude: {
+                    not: null,
+                },
+                longitude: {
+                    not: null,
+                },
+            },
+            include: {
+                author: {
+                    select: {
+                        id: true,
+                        name: true,
+                        image: true,
+                    },
+                },
+                supports: {
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                image: true,
+                            },
+                        },
+                    },
+                },
+                _count: {
+                    select: {
+                        supports: true,
+                        comments: {
+                            where: {
+                                deletedAt: null,
+                            },
+                        },
+                    },
+                },
+            },
+            orderBy: {
+                createdAt: 'desc',
+            },
+        });
+
+        const occurrencesInRange = occurrences.filter((occurrence) => {
+            if (latitude === undefined || longitude === undefined) {
+                return true;
+            }
+
+            return this.calculateDistanceKm(
+                latitude,
+                longitude,
+                Number(occurrence.latitude),
+                Number(occurrence.longitude),
+            ) <= rangeKm;
+        });
+
+        const categoryCounts = new Map<string, number>();
+        const userScores = new Map<
+            number,
+            {
+                userId: number;
+                name: string;
+                image: string | null;
+                created: number;
+                supports: number;
+                resolved: number;
+                score: number;
+            }
+        >();
+
+        let supportsRegistered = 0;
+
+        occurrencesInRange.forEach((occurrence) => {
+            categoryCounts.set(
+                occurrence.category,
+                (categoryCounts.get(occurrence.category) ?? 0) + 1,
+            );
+
+            if (!occurrence.anonymous && occurrence.author) {
+                const authorScore = this.getUserScore(userScores, occurrence.author);
+                authorScore.created += 1;
+                authorScore.score += 3;
+
+                if (occurrence.status === 'RESOLVED') {
+                    authorScore.resolved += 1;
+                    authorScore.score += 2;
+                }
+            }
+
+            occurrence.supports.forEach((support) => {
+                if (support.createdAt >= periodStart) {
+                    supportsRegistered += 1;
+                    const supporterScore = this.getUserScore(
+                        userScores,
+                        support.user,
+                    );
+                    supporterScore.supports += 1;
+                    supporterScore.score += 1;
+                }
+            });
+        });
+
+        const categoryRanking = Array.from(categoryCounts.entries())
+            .map(([category, total]) => ({
+                category,
+                total,
+            }))
+            .sort((a, b) => b.total - a.total || a.category.localeCompare(b.category));
+
+        const topOccurrences = occurrencesInRange
+            .map((occurrence) => ({
+                id: occurrence.id,
+                title: occurrence.title,
+                category: occurrence.category,
+                address: occurrence.address,
+                supportCount: occurrence._count.supports,
+                commentsCount: occurrence._count.comments,
+                status: occurrence.status,
+                createdAt: occurrence.createdAt,
+            }))
+            .sort(
+                (a, b) =>
+                    b.supportCount - a.supportCount ||
+                    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+            )
+            .slice(0, 10);
+
+        const engagedUsers = Array.from(userScores.values())
+            .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+            .slice(0, 10);
+
+        const mostReportedCategory = categoryRanking[0]?.category ?? 'Sem dados';
+
+        return {
+            filters: {
+                days,
+                rangeKm,
+                latitude,
+                longitude,
+            },
+            summary: {
+                created: occurrencesInRange.length,
+                supports: supportsRegistered,
+                resolved: occurrencesInRange.filter(
+                    (occurrence) => occurrence.status === 'RESOLVED',
+                ).length,
+                topCategory: mostReportedCategory,
+            },
+            categoryRanking,
+            topOccurrences,
+            engagedUsers,
+            featuredUsers: engagedUsers,
+        };
     }
 
     async findOne(id: number, userId: number) {
@@ -357,6 +526,54 @@ export class OccurrencesService {
                 },
             },
         };
+    }
+
+    private calculateDistanceKm(
+        originLatitude: number,
+        originLongitude: number,
+        targetLatitude: number,
+        targetLongitude: number,
+    ) {
+        const earthRadiusKm = 6371;
+        const latitudeDistance = this.toRadians(targetLatitude - originLatitude);
+        const longitudeDistance = this.toRadians(targetLongitude - originLongitude);
+        const originLatitudeRad = this.toRadians(originLatitude);
+        const targetLatitudeRad = this.toRadians(targetLatitude);
+
+        const a =
+            Math.sin(latitudeDistance / 2) * Math.sin(latitudeDistance / 2) +
+            Math.cos(originLatitudeRad) *
+                Math.cos(targetLatitudeRad) *
+                Math.sin(longitudeDistance / 2) *
+                Math.sin(longitudeDistance / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return earthRadiusKm * c;
+    }
+
+    private toRadians(value: number) {
+        return (value * Math.PI) / 180;
+    }
+
+    private getUserScore(userScores: Map<number, any>, user: any) {
+        const existingScore = userScores.get(user.id);
+
+        if (existingScore) {
+            return existingScore;
+        }
+
+        const score = {
+            userId: user.id,
+            name: user.name,
+            image: user.image,
+            created: 0,
+            supports: 0,
+            resolved: 0,
+            score: 0,
+        };
+
+        userScores.set(user.id, score);
+        return score;
     }
 
     private serializeOccurrence(occurrence: any, userId: number) {

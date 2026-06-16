@@ -2,6 +2,7 @@ import {
     IsArray,
     IsBoolean,
     IsEnum,
+    IsIn,
     IsNotEmpty,
     IsNumber,
     IsOptional,
@@ -104,6 +105,28 @@ export class ListOccurrenceDTO {
     @IsOptional()
     @IsEnum(OccurrenceStatus)
     status?: OccurrenceStatus;
+}
+
+export class RankingOccurrenceDTO {
+    @IsOptional()
+    @Type(() => Number)
+    @IsNumber()
+    latitude?: number;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsNumber()
+    longitude?: number;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsIn([7, 30, 60])
+    days?: number;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsNumber()
+    rangeKm?: number;
 }
 
 export class CreateOccurrenceCommentDTO {

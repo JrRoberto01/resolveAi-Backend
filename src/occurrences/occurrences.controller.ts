@@ -16,6 +16,7 @@ import {
     CreateOccurrenceCommentDTO,
     CreateOccurrenceDTO,
     ListOccurrenceDTO,
+    RankingOccurrenceDTO,
     UpdateOccurrenceCommentDTO,
     UpdateOccurrenceDTO,
 } from './occurrenceDTO';
@@ -45,6 +46,12 @@ export class OccurrencesController {
     async findSupported(@Request() request) {
         const userId = Number(request.user?.id);
         return this.occurrencesService.findSupported(userId);
+    }
+
+    @UseGuards(AuthGuard)
+    @Get('ranking')
+    async ranking(@Query() query: RankingOccurrenceDTO) {
+        return this.occurrencesService.ranking(query);
     }
 
     @UseGuards(AuthGuard)
