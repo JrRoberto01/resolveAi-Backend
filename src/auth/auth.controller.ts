@@ -22,7 +22,6 @@ export class AuthController {
         return this.authService.refreshToken(body.refreshToken);
     }
 
-
     @UseGuards(AuthGuard)
     @Get('me')
     async me(@Request() request) {
@@ -31,8 +30,16 @@ export class AuthController {
     }
 
     @UseGuards(AuthGuard)
+    @Patch('me')
+    async updateMe(@Request() request, @Body() data: updateUserDTO) {
+        const userId = Number(request.user?.id);
+        return this.authService.updateMe(userId, data);
+    }
+
+    @UseGuards(AuthGuard)
     @Patch(':id')
     async update(@Param('id', ParseIntPipe) id: number, @Body() data: updateUserDTO) {
         return this.authService.update(id, data);
     }
 }
+

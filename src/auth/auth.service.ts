@@ -134,19 +134,26 @@ export class AuthService {
     }
 
     async me(userId: number) {
-        const user = await this.prismaService.user.findUnique({
-            where: { id: userId },
-            select: {
-                id: true,
-                name: true,
-                email: true,
-                image: true,
-                latitude: true,
-                longitude: true,
-                group: true,
-                createdAt: true,
-                modifiedAt: true,
-                deletedAt: true,
+        const user = await this.prismaService.user.findFirst({
+            where: {
+                id: userId,
+                deletedAt: null,
+            },
+            select: this.userSelect(),
+        });
+
+        if (!user) {
+            throw new UnauthorizedException('User not found');
+        }
+
+        return this.serializeUser(user);
+    }
+
+    async updateMe(userId: number, data: updateUserDTO) {
+        const user = await this.prismaService.user.findFirst({
+            where: {
+                id: userId,
+                deletedAt: null,
             },
         });
 
@@ -154,7 +161,44 @@ export class AuthService {
             throw new UnauthorizedException('User not found');
         }
 
-        return user;
+        const updateData: {
+            name?: string;
+            image?: string;
+            password?: string;
+        } = {};
+
+        if (data.name !== undefined) {
+            updateData.name = data.name;
+        }
+
+        if (data.image !== undefined) {
+            updateData.image = data.image;
+        }
+
+        if (data.password) {
+            if (!data.currentPassword) {
+                throw new UnauthorizedException('Current password is required');
+            }
+
+            const currentPasswordMatches = await bcrypt.compare(
+                data.currentPassword,
+                user.password,
+            );
+
+            if (!currentPasswordMatches) {
+                throw new UnauthorizedException('Invalid current password');
+            }
+
+            updateData.password = await bcrypt.hash(data.password, 10);
+        }
+
+        const updatedUser = await this.prismaService.user.update({
+            where: { id: userId },
+            data: updateData,
+            select: this.userSelect(),
+        });
+
+        return this.serializeUser(updatedUser);
     }
 
     async update(id: number, data: updateUserDTO) {
@@ -235,5 +279,37 @@ export class AuthService {
                 refreshToken: hashedRefreshToken,
             },
         });
+    }
+
+    private userSelect() {
+        return {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+            latitude: true,
+            longitude: true,
+            group: true,
+            createdAt: true,
+            modifiedAt: true,
+            deletedAt: true,
+        };
+    }
+
+    private serializeUser(user: any) {
+        return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
+            latitude: user.latitude === null ? null : Number(user.latitude),
+            longitude: user.longitude === null ? null : Number(user.longitude),
+            group: user.group,
+            city: null,
+            state: null,
+            createdAt: user.createdAt,
+            modifiedAt: user.modifiedAt,
+            deletedAt: user.deletedAt,
+        };
     }
 }

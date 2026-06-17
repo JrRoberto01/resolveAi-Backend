@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, Min, MinLength } from "class-validator";
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
 
 enum UserGroup {
     DEFAULT = 'DEFAULT',
@@ -33,6 +33,7 @@ export class SignInDTO {
 
 export class updateUserDTO {
     @IsOptional()
+    @IsString()
     name: string;
 
     @IsOptional()
@@ -50,4 +51,8 @@ export class updateUserDTO {
     @IsOptional()
     @IsEnum(UserGroup)
     group: UserGroup;
+
+    @IsOptional()
+    @IsString()
+    currentPassword: string;
 }

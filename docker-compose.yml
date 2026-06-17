@@ -1,0 +1,39 @@
+services:
+  api:
+    build:
+      context: .
+    container_name: resolve-ai-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - .:/app
+      - api_node_modules:/app/node_modules
+      - api_generated:/app/generated
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && npm run start:dev"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: resolve-ai-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-resolve_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-resolve_ai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-resolve_ai_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-resolve_ai} -d ${POSTGRES_DB:-resolve_ai}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  api_node_modules:
+  api_generated:
+  postgres_data:
