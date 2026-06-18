@@ -5,6 +5,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { jwtConstants } from './constants';
+import { NotificationsModule } from 'src/notifications/notifications.module';
 
 @Module({
 	imports: [JwtModule.register({
@@ -12,6 +13,7 @@ import { jwtConstants } from './constants';
 		secret: jwtConstants.secret,
 		signOptions: { expiresIn: '1d' },
 	}),
+	NotificationsModule,
 	],
 	controllers: [AuthController],
 	providers: [AuthService, PrismaService]

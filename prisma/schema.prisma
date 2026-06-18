@@ -21,6 +21,13 @@ enum OccurrenceStatus {
     REJECTED
 }
 
+enum NotificationType {
+    SUPPORTED_OCCURRENCE_RESOLVED
+    OCCURRENCE_COMMENTED
+    OCCURRENCE_SUPPORTED
+    PASSWORD_CHANGED
+}
+
 model User {
     id        Int      @id @default(autoincrement())
     name      String
@@ -39,6 +46,7 @@ model User {
     occurrences Occurrence[]
     supports    OccurrenceSupport[]
     comments    OccurrenceComment[]
+    notifications Notification[]
 }
 
 model Occurrence {
@@ -58,6 +66,7 @@ model Occurrence {
 
     supports OccurrenceSupport[]
     comments OccurrenceComment[]
+    notifications Notification[]
 
     createdAt  DateTime  @default(now())
     modifiedAt DateTime  @updatedAt
@@ -66,6 +75,24 @@ model Occurrence {
     @@index([authorId])
     @@index([category])
     @@index([status])
+}
+
+model Notification {
+    id           Int              @id @default(autoincrement())
+    userId       Int
+    occurrenceId Int?
+    type         NotificationType
+    title        String
+    message      String
+    readAt       DateTime?
+    createdAt    DateTime         @default(now())
+    deletedAt    DateTime?
+
+    user       User        @relation(fields: [userId], references: [id])
+    occurrence Occurrence? @relation(fields: [occurrenceId], references: [id])
+
+    @@index([userId, readAt, createdAt])
+    @@index([occurrenceId])
 }
 
 model OccurrenceComment {

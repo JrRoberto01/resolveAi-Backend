@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 
 import { SignInDTO, SignUpDTO, updateUserDTO } from './authDTO';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from 'src/notifications/notifications.service';
 
 type JwtPayload = { id: number; name: string; email: string; };
 
@@ -12,6 +13,7 @@ export class AuthService {
     constructor(
         private prismaService: PrismaService,
         private jwtService: JwtService,
+        private notificationsService: NotificationsService,
     ) { }
 
     async signup(data: SignUpDTO) {
@@ -192,11 +194,22 @@ export class AuthService {
             updateData.password = await bcrypt.hash(data.password, 10);
         }
 
+        const passwordWasChanged = Boolean(updateData.password);
+
         const updatedUser = await this.prismaService.user.update({
             where: { id: userId },
             data: updateData,
             select: this.userSelect(),
         });
+
+        if (passwordWasChanged) {
+            await this.notificationsService.create({
+                userId,
+                type: 'PASSWORD_CHANGED',
+                title: 'Senha alterada',
+                message: 'Sua senha foi alterada com sucesso.',
+            });
+        }
 
         return this.serializeUser(updatedUser);
     }

@@ -55,6 +55,12 @@ export class OccurrencesController {
     }
 
     @UseGuards(AuthGuard)
+    @Get('categories')
+    async categories() {
+        return this.occurrencesService.findCategories();
+    }
+
+    @UseGuards(AuthGuard)
     @Get(':id')
     async findOne(
         @Request() request,

@@ -4,6 +4,7 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
+import { NotificationsService } from 'src/notifications/notifications.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import {
     CreateOccurrenceCommentDTO,
@@ -14,11 +15,30 @@ import {
     UpdateOccurrenceDTO,
 } from './occurrenceDTO';
 
+export const OCCURRENCE_CATEGORIES = [
+    'Infraestrutura e Vias Públicas',
+    'Iluminação Pública',
+    'Limpeza Urbana e Resíduos',
+    'Saneamento e Vazamentos',
+    'Meio Ambiente e Saúde Pública (Zoonoses)',
+    'Trânsito e Mobilidade',
+    'Fiscalização de Posturas e Obras',
+];
+
 @Injectable()
 export class OccurrencesService {
-    constructor(private prismaService: PrismaService) {}
+    constructor(
+        private prismaService: PrismaService,
+        private notificationsService: NotificationsService,
+    ) {}
+
+    findCategories() {
+        return OCCURRENCE_CATEGORIES;
+    }
 
     async create(userId: number, data: CreateOccurrenceDTO) {
+        this.ensureValidCategory(data.category);
+
         const occurrence = await this.prismaService.occurrence.create({
             data: {
                 title: data.title,
@@ -273,6 +293,13 @@ export class OccurrencesService {
 
         this.ensureOwner(occurrence.authorId, userId);
 
+        if (data.category !== undefined) {
+            this.ensureValidCategory(data.category);
+        }
+
+        const shouldNotifySupporters =
+            data.status === 'RESOLVED' && occurrence.status !== 'RESOLVED';
+
         const updatedOccurrence = await this.prismaService.occurrence.update({
             where: { id },
             data: {
@@ -288,6 +315,10 @@ export class OccurrencesService {
             },
             ...this.defaultInclude(userId),
         });
+
+        if (shouldNotifySupporters) {
+            await this.notifySupportersOccurrenceResolved(id, userId, updatedOccurrence.title);
+        }
 
         return this.serializeOccurrence(updatedOccurrence, userId);
     }
@@ -308,7 +339,7 @@ export class OccurrencesService {
     }
 
     async toggleSupport(id: number, userId: number) {
-        await this.findExistingOccurrence(id, userId);
+        const occurrenceBeforeSupport = await this.findExistingOccurrence(id, userId);
 
         const existingSupport =
             await this.prismaService.occurrenceSupport.findUnique({
@@ -333,6 +364,16 @@ export class OccurrencesService {
                     occurrenceId: id,
                 },
             });
+
+            if (occurrenceBeforeSupport.authorId !== userId) {
+                await this.notificationsService.create({
+                    userId: occurrenceBeforeSupport.authorId,
+                    type: 'OCCURRENCE_SUPPORTED',
+                    title: 'Novo apoio na sua ocorrencia',
+                    message: `Sua ocorrencia "${occurrenceBeforeSupport.title}" recebeu um apoio.`,
+                    occurrenceId: id,
+                });
+            }
         }
 
         const occurrence = await this.findExistingOccurrence(id, userId);
@@ -365,7 +406,7 @@ export class OccurrencesService {
         userId: number,
         data: CreateOccurrenceCommentDTO,
     ) {
-        await this.ensureOccurrenceExists(occurrenceId);
+        const occurrence = await this.findOccurrenceForNotification(occurrenceId);
 
         const content = data.content.trim();
 
@@ -381,6 +422,16 @@ export class OccurrencesService {
             },
             include: this.commentInclude(),
         });
+
+        if (occurrence.authorId !== userId) {
+            await this.notificationsService.create({
+                userId: occurrence.authorId,
+                type: 'OCCURRENCE_COMMENTED',
+                title: 'Novo comentario na sua ocorrencia',
+                message: `Sua ocorrencia "${occurrence.title}" recebeu um comentario.`,
+                occurrenceId,
+            });
+        }
 
         return this.serializeComment(comment, userId);
     }
@@ -480,6 +531,61 @@ export class OccurrencesService {
     private ensureOwner(authorId: number, userId: number, message = 'You cannot change this occurrence') {
         if (authorId !== userId) {
             throw new ForbiddenException(message);
+        }
+    }
+
+    private async findOccurrenceForNotification(id: number) {
+        const occurrence = await this.prismaService.occurrence.findFirst({
+            where: {
+                id,
+                deletedAt: null,
+            },
+            select: {
+                id: true,
+                title: true,
+                authorId: true,
+            },
+        });
+
+        if (!occurrence) {
+            throw new NotFoundException('Occurrence not found');
+        }
+
+        return occurrence;
+    }
+
+    private async notifySupportersOccurrenceResolved(
+        occurrenceId: number,
+        authorId: number,
+        title: string,
+    ) {
+        const supports = await this.prismaService.occurrenceSupport.findMany({
+            where: {
+                occurrenceId,
+                userId: {
+                    not: authorId,
+                },
+            },
+            select: {
+                userId: true,
+            },
+            distinct: ['userId'],
+        });
+
+        await this.notificationsService.createMany(
+            supports.map((support) => ({
+                userId: support.userId,
+                type: 'SUPPORTED_OCCURRENCE_RESOLVED',
+                title: 'Ocorrencia resolvida',
+                message: `A ocorrencia "${title}" que voce apoiou foi finalizada.`,
+                occurrenceId,
+            })),
+        );
+    }
+
+    private ensureValidCategory(category: string) {
+        if (!OCCURRENCE_CATEGORIES.includes(category)) {
+            throw new BadRequestException('Invalid occurrence category');
         }
     }
 

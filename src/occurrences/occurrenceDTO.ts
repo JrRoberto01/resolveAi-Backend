@@ -7,6 +7,7 @@ import {
     IsNumber,
     IsOptional,
     IsString,
+    Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { OccurrenceStatus } from 'generated/prisma/client';
@@ -32,19 +33,20 @@ export class CreateOccurrenceDTO {
     @IsBoolean()
     anonymous?: boolean;
 
-    @IsOptional()
+    @IsNotEmpty()
     @Type(() => Number)
     @IsNumber()
-    latitude?: number;
+    latitude: number;
 
-    @IsOptional()
+    @IsNotEmpty()
     @Type(() => Number)
     @IsNumber()
-    longitude?: number;
+    longitude: number;
 
-    @IsOptional()
+    @IsNotEmpty()
     @IsString()
-    address?: string;
+    @Matches(/\S/)
+    address: string;
 
     @IsOptional()
     @IsArray()
@@ -85,6 +87,7 @@ export class UpdateOccurrenceDTO {
 
     @IsOptional()
     @IsString()
+    @Matches(/\S/)
     address?: string;
 
     @IsOptional()
